@@ -12,11 +12,20 @@ var builder = WebApplication.CreateBuilder(args);
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 
-// Configure JSON options to handle enums as strings
+// Configure JSON options to handle enums as strings and consistent naming
+var jsonOptions = new JsonSerializerOptions
+{
+    PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+    Converters = { new JsonStringEnumConverter() }
+};
+
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
+    options.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
 });
+
+builder.Services.AddSingleton(jsonOptions);
 
 builder.Services.AddSingleton<IProducer<string, string>>(provider =>
 {
@@ -51,6 +60,7 @@ var eventsGroup = app.MapGroup("/events").WithTags("Events");
 eventsGroup.MapPost("/track", async (
     [FromBody] ECommerceEvent eventData,
     [FromServices] IProducer<string, string> producer,
+    [FromServices] JsonSerializerOptions jsonOptions,
     HttpContext context) =>
     {
         try
@@ -67,7 +77,7 @@ eventsGroup.MapPost("/track", async (
             var message = new Message<string, string>
             {
                 Key = eventWithDeatils.UserId.ToString(),
-                Value = JsonSerializer.Serialize(eventWithDeatils)
+                Value = JsonSerializer.Serialize(eventWithDeatils, jsonOptions)
             };
 
 
@@ -102,6 +112,7 @@ eventsGroup.MapPost("/track", async (
 eventsGroup.MapPost("/track-batch", async (
     [FromBody] ECommerceEvent[] events,
     [FromServices] IProducer<string, string> producer,
+    [FromServices] JsonSerializerOptions jsonOptions,
     HttpContext context) =>
     {
         try
@@ -120,7 +131,7 @@ eventsGroup.MapPost("/track-batch", async (
                 var message = new Message<string, string>
                 {
                     Key = eventWithDetails.UserId.ToString(),
-                    Value = JsonSerializer.Serialize(eventWithDetails)
+                    Value = JsonSerializer.Serialize(eventWithDetails, jsonOptions)
                 };
 
                 tasks.Add(producer.ProduceAsync("ecommerce-events", message));
@@ -167,6 +178,7 @@ eventsGroup.MapPost("/track-batch", async (
 
 eventsGroup.MapPost("/generate-test-data", async (
     IProducer<string, string> producer,
+    JsonSerializerOptions jsonOptions,
     int count = 100) =>
 {
     if (!app.Environment.IsDevelopment())
@@ -201,7 +213,7 @@ eventsGroup.MapPost("/generate-test-data", async (
             var message = new Message<string, string>
             {
                 Key = eventData.UserId.ToString(),
-                Value = JsonSerializer.Serialize(eventData)
+                Value = JsonSerializer.Serialize(eventData, jsonOptions)
             };
 
             tasks.Add(producer.ProduceAsync("ecommerce-events", message));
